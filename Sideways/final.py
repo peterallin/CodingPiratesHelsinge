@@ -30,29 +30,33 @@ FRAMES_PER_SECOND = 60
 class Player:
     def __init__(self, rect, area):
         self.rect = rect
-        self.speed_pixels_per_draw = 2
+        self.x = rect.x
+        self.y = rect.y
+        self.speed_pixels_per_second = 200
         self.area = area
         self.alive = True
 
-    def move(self, player_input):
+    def move(self, player_input, seconds):
         if player_input.down and self.rect.bottom < self.area.bottom:
-            self.rect.y = self.rect.y + self.speed_pixels_per_draw
+            self.y = self.y + self.speed_pixels_per_second * seconds
         if player_input.up and self.rect.top > self.area.top:
-            self.rect.y = self.rect.y - self.speed_pixels_per_draw
+            self.y = self.y - self.speed_pixels_per_second * seconds
         if player_input.right and self.rect.right < self.area.right:
-            self.rect.x = self.rect.x + self.speed_pixels_per_draw
+            self.x = self.x + self.speed_pixels_per_second * seconds
         if player_input.left and self.rect.left > self.area.left:
-            self.rect.x = self.rect.x - self.speed_pixels_per_draw
-
+            self.x = self.x - self.speed_pixels_per_second * seconds
+        self.rect.x = self.x
+        self.rect.y = self.y
 
 class PlayerShot:
     def __init__(self, rect):
         self.rect = rect
-        self.speed_pixels_per_draw = 5
+        self.x = rect.x
+        self.speed_pixels_per_second = 500
 
-    def update(self):
-        self.rect.x = self.rect.x + self.speed_pixels_per_draw
-
+    def update(self, seconds):
+        self.x = self.x + self.speed_pixels_per_second * seconds
+        self.rect.x = self.x
 
 class AlienShot:
     def __init__(self, rect, speed_x, speed_y):
@@ -62,21 +66,22 @@ class AlienShot:
         self.speed_x = speed_x
         self.speed_y = speed_y
 
-    def update(self):
-        self.x = self.x + self.speed_x
+    def update(self, seconds):
+        self.x = self.x + self.speed_x * seconds
         self.rect.x = self.x
-        self.y = self.y + self.speed_y
+        self.y = self.y + self.speed_y * seconds
         self.rect.y = self.y
 
 
 class Alien:
     def __init__(self, rect, movement_area, extra_speed):
         self.rect = rect
+        self.x = rect.x
         self.movement_area = movement_area
-        self.speed_pixels_per_draw = 1 + extra_speed
+        self.speed_pixels_per_second = 100 + extra_speed
         self.moving_left = True
 
-    def update(self):
+    def update(self, seconds):
         if self.rect.left <= self.movement_area.left:
             self.moving_left = False
 
@@ -84,10 +89,10 @@ class Alien:
             self.moving_left = True
 
         if self.moving_left:
-            self.rect.x = self.rect.x - self.speed_pixels_per_draw
+            self.x = self.x - self.speed_pixels_per_second * seconds
         else:
-            self.rect.x = self.rect.x + self.speed_pixels_per_draw
-
+            self.x = self.x + self.speed_pixels_per_second * seconds
+        self.rect.x = self.x
 
 
 class Star:
@@ -198,9 +203,9 @@ class GameState:
                 star = random_star_for_x(x, game_area.height)
                 self.stars.append(star)
 
-    def update(self, player_input, graphics):
+    def update(self, player_input, graphics, seconds):
         if self.mode == "playing":
-            self.update_playing(player_input, graphics)
+            self.update_playing(player_input, graphics, seconds)
         if self.mode == "waiting":
             self.update_waiting(player_input, graphics)
         if self.mode == "gameover":
@@ -218,7 +223,7 @@ class GameState:
             self.mode = "restart"
 
 
-    def update_playing(self, player_input, graphics):
+    def update_playing(self, player_input, graphics, seconds):
         if not self.player.alive and self.lives > 0 and time.time() - self.time_of_death > 1:
             self.alien_shots = []
             self.aliens = make_wave(graphics, self.game_area, self.wave_number)
@@ -232,8 +237,7 @@ class GameState:
             self.mode = "gameover"
             self.gameover_time = time.time()
 
-        self.player.move(player_input)
-
+        self.player.move(player_input, seconds)
 
         may_fire = not self.has_shot and self.player.alive
         if player_input.fire and may_fire:
@@ -248,7 +252,7 @@ class GameState:
             star.move()
 
         for shot in self.player_shots:
-            shot.rect.x = shot.rect.x + shot.speed_pixels_per_draw
+            shot.update(seconds)
         self.reap_outsiders(self.player_shots)
 
         if len(self.aliens) == 0:
@@ -262,7 +266,7 @@ class GameState:
         self.reap_outsiders(self.stars)
 
         for alien in self.aliens:
-            alien.update()
+            alien.update(seconds)
 
             if random.randint(1, 10000) > 9990:
                 center = alien.rect.center
@@ -276,12 +280,14 @@ class GameState:
                 else:
                     direction_y = -1
 
-                shot = AlienShot(rect, direction_x * 5, random.uniform(-1 + 0.8 * direction_y,
-                                                                       1 + 0.8 * direction_y))
+                shot = AlienShot(rect,
+                                 direction_x * 400,
+                                 random.uniform(-1 + 100 * direction_y,
+                                                 1 + 100 * direction_y))
                 self.alien_shots.append(shot)
 
         for shot in self.alien_shots:
-            shot.update()
+            shot.update(seconds)
         self.reap_outsiders(self.alien_shots)
 
         for shot in list(self.player_shots):
@@ -338,7 +344,7 @@ def make_alien(graphics, game_area, x, y, extra_speed):
 
 
 def make_wave(graphics, game_area, wave_number):
-    extra_speed = wave_number // 3
+    extra_speed = 20 * wave_number // 3
 
     if wave_number % 3 == 0:
         return [make_alien(graphics, game_area, 10, 0, extra_speed),
@@ -443,7 +449,7 @@ def main_loop():
         delay_seconds = max(0.0, 1.0 / FRAMES_PER_SECOND - elapsed_seconds)
         pygame.time.delay(int(delay_seconds * 1000))
         player_input.update()
-        game_state.update(player_input, graphics)
+        game_state.update(player_input, graphics, elapsed_seconds)
         paint_screen(window, game_state, graphics)
     pygame.quit()
 
